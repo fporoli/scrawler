@@ -2,7 +2,8 @@ var fs = require('node-fs'),
     url = require('url'),
     Crawler = require("simplecrawler").Crawler,
     mongoose = require('mongoose'),
-    request = require('request');
+    request = require('request'),
+    jsdom = require("jsdom");
 
 mongoose.connect('mongodb://localhost:27017/dbbootshop');
 
@@ -22,6 +23,8 @@ var productSchema = mongoose.Schema({
     subCategory: String,
     subSubCategory: String,
     imgSmall: String,
+    imgMedium: String,
+    imgLarge: String,
     price: {
         fixed: 0.0,
         variable: false,
@@ -245,21 +248,32 @@ var downloadSite = function (domain, callback) {
                                     }
                                 }
                             }
-                            request('http://' + domain + "/" + prod.urlDetail + "/1", function(error, response, body) {
-                                if (!error && response.statusCode == 200) {
-                                    console.log(body) // Print the google web page.
+
+                            jsdom.env(
+                                "http://" + domain + "/" + prod.urlDetail + "/1",
+                                ["http://code.jquery.com/jquery.js"],
+                                function (errors, window) {
+                                    if (errors) {
+                                        console.log("Product details got errors: Errors: " + errors);
+                                    }
+                                    else {
+                                        var $ = window.$;
+                                        console.log("Product details get: Successfull.... analyzing");
+                                        prod.imgMedium = $("details.img-medium").toString();
+                                    }
+                                    prod.save(function (err, fluffy) {
+                                        console.log("Product saved.");
+                                        if (err) {
+                                            console.error(err);
+                                        }
+                                        var prodOld = prod;
+                                        prod = new Product();
+                                        prod.category = prodOld.category;
+                                        prod.subCategory = prodOld.subCategory;
+                                        prod.subSubCategory = prodOld.subSubCategory;
+                                    });
                                 }
-                            });
-
-                            prod.save(function (err, fluffy) {
-                                if (err) return console.error(err);
-                            });
-
-                            var prodOld = prod;
-                            prod = new Product();
-                            prod.category = prodOld.category;
-                            prod.subCategory = prodOld.subCategory;
-                            prod.subSubCategory = prodOld.subSubCategory;
+                            );
                         }
                     }
                     console.log(".. Items: " + el.length);
