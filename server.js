@@ -37,6 +37,9 @@ var productSchema = mongoose.Schema({
     pdf: String
 });
 
+id: String,
+name,url, urlDetail, urlDetailSpec, category, subCategory, subSubCategory, imgSmall, imgMedium, imgLarge, pricefixed, pricevariable, pricetag, isNewProduct, brand, title, shortDescription, longDescription, dataartname, pdf
+
 var Product = mongoose.model('Product', productSchema);
 Product.collection.drop();
 
