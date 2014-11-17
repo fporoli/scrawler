@@ -1,20 +1,20 @@
-var fs = require('node-fs'),
-    url = require('url'),
+var fs = require("node-fs"),
+    url = require( "url" ),
     Crawler = require("simplecrawler").Crawler,
-    mongoose = require('mongoose'),
-    jsdom = require("jsdom"),
-    request = require('request');
+    mongoose = require("mongoose"),
+    request = require("request"),
+    xmldom = require("xmldom");
 
-mongoose.connect('mongodb://localhost:27017/dbbootshop');
+mongoose.connect("mongodb://localhost:27017/dbbootshop");
 
 var db = mongoose.connection;
-db.on('error', console.error.bind(console, 'connection error:'));
-db.once('open', function callback () {
-    console.log('Connected');
+db.on("error", console.error.bind(console, "connection error:"));
+db.once("open", function callback() {
+    console.log("Connected to Mongo DB");
 });
 
 var productSchema = mongoose.Schema({
-    id: String,
+    id: { type: String, unique: true },
     name: String,
     url: String,
     urlDetail: String,
@@ -34,18 +34,19 @@ var productSchema = mongoose.Schema({
     shortDescription: String,
     longDescription: String,
     dataartname: String,
-    pdf: String
+    pdf: String,
+    urlPrice: String
 });
 
-id: String,
-name,url, urlDetail, urlDetailSpec, category, subCategory, subSubCategory, imgSmall, imgMedium, imgLarge, pricefixed, pricevariable, pricetag, isNewProduct, brand, title, shortDescription, longDescription, dataartname, pdf
+// id,name,url,urlDetail,urlDetailSpec,category,subCategory,subSubCategory,imgSmall,imgMedium,imgLarge,pricefixed,
+// pricevariable,pricetag,isNewProduct,brand,title,shortDescription,longDescription,dataartname,pdf,urlPrice
 
-var Product = mongoose.model('Product', productSchema);
+var Product = mongoose.model("Product", productSchema);
 Product.collection.drop();
 
 function stringToByteArray(str) {
     var b = [], i, unicode;
-    for(i = 0; i < str.length; i++) {
+    for (i = 0; i < str.length; i++) {
         unicode = str.charCodeAt(i);
         // 0x00000000 - 0x0000007f -> 0xxxxxxx
         if (unicode <= 0x7f) {
@@ -73,11 +74,11 @@ function stringToByteArray(str) {
 function normalizeString(str) {
     if (str) {
         return str
-            .replace(/&amp;auml;/g,"ä")
-            .replace(/&auml;/g,"ä")
-            .replace(/&amp;uuml;/g,"ü")
+            .replace(/&amp;auml;/g, "ä")
+            .replace(/&auml;/g, "ä")
+            .replace(/&amp;uuml;/g, "ü")
             .replace(/&uuml;/g, "ü")
-            .replace(/&amp;ouml;/g,"ä")
+            .replace(/&amp;ouml;/g, "ä")
             .replace(/&ouml;/g, "ö")
     }
     return "";
@@ -105,7 +106,7 @@ function findProductInfos(htmlDoc, prod, prodWithCategory) {
             }
         }
     }
-    return {divElements: divElements, divElementIter: divElementIter, divElem: divElem, pElem: pElem, tmp: tmp};
+    return { divElements: divElements, divElementIter: divElementIter, divElem: divElem, pElem: pElem, tmp: tmp };
 }
 
 function extractTextElements(td, prod) {
@@ -169,15 +170,11 @@ function extractImgElements(td, prod) {
             console.log("..... href:" + prod.urlDetail);
         }
         var isNewDiv = td[0].getElementsByTagName("div");
-        var isNew = false;
+        prod.isNewProduct = false;
         for (var j = 0; j < isNewDiv.length; j++) {
             if (isNewDiv[j] && isNewDiv[j].hasAttribute("class") && isNewDiv[j].getAttribute("class") === "new_icon") {
-                isNew = true;
+                prod.isNewProduct = true;
             }
-        }
-        prod.isNewProduct = isNew;
-        if (prod.isNewProduct) {
-            console.log("..... Is New");
         }
     }
 }
@@ -194,10 +191,9 @@ function extractAndPersistProductInformations(prod, prodWithCategory, htmlDoc, e
     extractImgElements(td, prod);
     extractTextElements(td, prod);
 
-    request("http://" + domain + "/" + prod.urlDetail + "/1", function (error, response, body) {
+    request("http://" + domain + "/" + prod.urlDetail + "/1", function(error, response, body) {
         if (!error && response.statusCode == 200) {
-            var DOMparser = require("xmldom").DOMParser;
-            var htmlDetailsDoc = new DOMparser().parseFromString(body);
+            var htmlDetailsDoc = (new xmldom.DOMParser()).parseFromString(body);
             var el = htmlDetailsDoc.getElementById("details");
             if (el && el.hasChildNodes()) {
                 var divs = el.getElementsByTagName("div");
@@ -211,22 +207,28 @@ function extractAndPersistProductInformations(prod, prodWithCategory, htmlDoc, e
                 }
                 if (divs.length > 2 && divs[2].hasAttribute("class") && divs[2].getAttribute("class") === "text") {
                     var subDivs = divs[2].getElementsByTagName("div");
-                    for(var j = 0; j < subDivs.length; j++) {
+                    for (var j = 0; j < subDivs.length; j++) {
                         if (subDivs[j].hasAttribute("class") && subDivs[j].getAttribute("class") === "icon pdf") {
                             prod.pdf = subDivs[j].getElementsByTagName("a")[0].getAttribute("href");
-                        }
-                        if (subDivs[j].hasAttribute("class") && subDivs[j].getAttribute("class") === "section desc") {
+                        } else if (subDivs[j].hasAttribute("class") && subDivs[j].getAttribute("class") === "section desc") {
                             var ssDiv = subDivs[j].getElementsByTagName("div");
-                            for(var k = 0; k < ssDiv.length; k++) {
+                            for (var k = 0; k < ssDiv.length; k++) {
                                 if (ssDiv[k].hasAttribute("itemprop") && ssDiv[k].getAttribute("itemprop") === "description") {
-                                    prod.longDescription = ssDiv[k].childNodes[1].toString();
+                                    prod.longDescription = normalizeString(ssDiv[k].childNodes[1].toString());
+                                }
+                            }
+                        } else if (subDivs[j].hasAttribute("class") && subDivs[j].getAttribute("class") === "section prix") {
+                            var ssDiv = subDivs[j].getElementsByTagName("div");
+                            for (var k = 0; k < ssDiv.length; k++) {
+                                if (ssDiv[k].hasAttribute("class") && ssDiv[k].getAttribute("class") === "metas") {
+                                    prod.urlPrice = ssDiv[k].getElementsByTagName("a")[0].getAttribute("data-backurl");
                                 }
                             }
                         }
                     }
                 }
 
-                prod.save(function (err, fluffy) {
+                prod.save(function(err, fluffy) {
                     console.log("Product saved.");
                     if (err) {
                         console.error(err);
@@ -239,8 +241,8 @@ function extractAndPersistProductInformations(prod, prodWithCategory, htmlDoc, e
 }
 
 function cleanupHtml(htmlDoc) {
-    var removeIds = ["top", "menu1_#3_main", "main_cat#13", "footer", "promo", "drawer", "r_bgmask", "search_filter"];
-    removeIds.forEach(function (r) {
+    var removeIds = [ "top", "menu1_#3_main", "main_cat#13", "footer", "promo", "drawer", "r_bgmask", "search_filter" ];
+    removeIds.forEach(function(r) {
         if (r.indexOf("#") >= 0) {
             var maxVal = parseInt(r.substr(r.indexOf("#") + 1));
             for (var i = 1; i <= maxVal; i++) {
@@ -250,8 +252,7 @@ function cleanupHtml(htmlDoc) {
                     el.parentNode.removeChild(el);
                 }
             }
-        }
-        else {
+        } else {
             var el = htmlDoc.getElementById(r);
             if (el && el.parentNode) {
                 el.parentNode.removeChild(el);
@@ -264,18 +265,18 @@ function cleanupHtml(htmlDoc) {
  * @param String. Domain to download.
  * @Param Function. Callback when crawl is complete.
  */
-var downloadSite = function (domain, callback) {
+var downloadSite = function(domain, callback) {
 
     // Where to save downloaded data
-    var outputDirectory = __dirname + '/' + domain;
+    var outputDirectory = __dirname + "/" + domain;
     var myCrawler = new Crawler(domain);
     myCrawler.interval = 250;
     myCrawler.maxConcurrency = 5;
-    myCrawler.addFetchCondition(function (parsedUrl) {
+    myCrawler.addFetchCondition(function(parsedUrl) {
         return parsedUrl.path.indexOf("/fr/") < 0;
     });
 
-    myCrawler.on("fetchcomplete",function(queueItem, responseBuffer, response) {
+    myCrawler.on("fetchcomplete", function(queueItem, responseBuffer, response) {
 
         // Parse url
         var parsed = url.parse(queueItem.url)
@@ -286,14 +287,13 @@ var downloadSite = function (domain, callback) {
         }
 
         // Get directory name in order to create any nested dirs
-        var dirname = outputDirectory + parsed.pathname.replace(/\/[^\/]+$/, '');
+        var dirname = outputDirectory + parsed.pathname.replace(/\/[^\/]+$/, "");
 
         // Path to save file
         var filepath = outputDirectory + parsed.pathname;
 
-        if (response.headers['content-type'] === "text/html; charset=UTF-8") {
-            var DOMparser = require("xmldom").DOMParser;
-            var htmlDoc = new DOMparser().parseFromString(responseBuffer.toString(), "text/html");
+        if (response.headers["content-type"] === "text/html; charset=UTF-8") {
+            var htmlDoc = (new xmldom.DOMParser()).parseFromString(responseBuffer.toString(), "text/html");
             //ids to remove:
             cleanupHtml(htmlDoc);
             var el = htmlDoc.getElementById("top");
@@ -312,8 +312,9 @@ var downloadSite = function (domain, callback) {
                 if (el && el.hasChildNodes()) {
                     var tr = el.getElementsByTagName("tr");
                     var prodWithCategory = new Product();
-                    for(var i=0; i < tr.length; i++) {
+                    for (var i = 0; i < tr.length; i++) {
                         var prod = new Product();
+                        prod.url = queueItem.url;
                         if (prodWithCategory.category) {
                             prod.category = prodWithCategory.category;
                             prod.subCategory = prodWithCategory.subCategory;
@@ -329,31 +330,31 @@ var downloadSite = function (domain, callback) {
             }
         }
 
-        if (response.headers['content-type'] !== "text/html; charset=UTF-8") {
+        if (response.headers["content-type"] !== "text/html; charset=UTF-8") {
             // For test purposes skip everything which is not html
             return;
         }
 
         // Check if DIR exists
-        fs.exists(dirname, function (exists) {
+        fs.exists(dirname, function(exists) {
 
             // If DIR exists, write file
             if (exists) {
-                fs.writeFile(filepath, responseBuffer, function () {})
+                fs.writeFile(filepath, responseBuffer, function() {})
             // Else, recursively create dir using node-fs, then write file
             } else {
-                fs.mkdir(dirname, 0755, true, function (err) {
-                    fs.writeFile(filepath, responseBuffer, function () {
+                fs.mkdir(dirname, 0755, true, function(err) {
+                    fs.writeFile(filepath, responseBuffer, function() {
                     })
                 });
             }
         });
-        console.log("I just received %s (%d bytes)",queueItem.url,responseBuffer.length);
-        console.log("It was a resource of type %s",response.headers['content-type']);
+        console.log("I just received %s (%d bytes)", queueItem.url, responseBuffer.length);
+        console.log("It was a resource of type %s", response.headers["content-type"]);
     });
 
     // Fire callback
-    myCrawler.on('complete', function () {
+    myCrawler.on("complete", function() {
         callback();
     })
 
@@ -361,6 +362,6 @@ var downloadSite = function (domain, callback) {
     myCrawler.start();
 }
 
-downloadSite("www.bucher-walt.ch", function () {
-    console.log('Done!');
+downloadSite("www.bucher-walt.ch", function() {
+    console.log("Done!");
 });
