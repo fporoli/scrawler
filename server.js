@@ -74,7 +74,7 @@ function stringToByteArray(str) {
 function takeInnerHtml(str) {
     if (str && str.trim().indexOf("<a href=") === 0) {
         var idx = str.indexOf(">") + 1;
-        return str.substr(idx, str.length - str.indexOf("<", idx) - 1);
+        return str.substr(idx, str.indexOf("<", idx) - idx);
     }
     return str;
 }
@@ -364,8 +364,8 @@ var downloadSite = function(domain, callback) {
     // Fire callback
     myCrawler.on("complete", function() {
         callback();
-    })
-
+    });
+    
     // Start Crawl
     myCrawler.start();
 }
