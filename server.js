@@ -71,6 +71,14 @@ function stringToByteArray(str) {
     return b;
 }
 
+function takeInnerHtml(str) {
+    if (str && str.trim().indexOf("<a href=") === 0) {
+        var idx = str.indexOf(">") + 1;
+        return str.substr(idx, str.length - str.indexOf("<", idx) - 1);
+    }
+    return str;
+}
+
 function normalizeString(str) {
     if (str) {
         return str
@@ -93,11 +101,11 @@ function findProductInfos(htmlDoc, prod, prodWithCategory) {
                 var pElem = divElem.getElementsByTagName("p");
                 if (pElem.length == 3) {
                     var tmp = pElem[0].getElementsByTagName("span");
-                    prod.category = tmp && tmp.length > 0 && tmp[0] && tmp[0].firstChild ? tmp[0].firstChild.toString() : "";
+                    prod.category = tmp && tmp.length > 0 && tmp[0] && tmp[0].firstChild ? normalizeString(tmp[0].firstChild.toString()) : "";
                     tmp = pElem[1].getElementsByTagName("span");
-                    prod.subCategory = tmp && tmp.length > 0 && tmp[0] && tmp[0].firstChild ? tmp[0].firstChild.toString() : "";
+                    prod.subCategory = tmp && tmp.length > 0 && tmp[0] && tmp[0].firstChild ? normalizeString(takeInnerHtml(tmp[0].firstChild.toString())) : "";
                     tmp = pElem[2].getElementsByTagName("span");
-                    prod.subSubCategory = tmp && tmp.length > 0 && tmp[0] && tmp[0].firstChild ? tmp[0].firstChild.toString() : "";
+                    prod.subSubCategory = tmp && tmp.length > 0 && tmp[0] && tmp[0].firstChild ? normalizeString(tmp[0].firstChild.toString()) : "";
                     console.log(">>>>>>>>> " + prod.category + " # " + prod.subCategory + " # " + prod.subSubCategory);
                     prodWithCategory.category = prod.category;
                     prodWithCategory.subCategory = prod.subCategory;
